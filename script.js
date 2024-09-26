@@ -1,131 +1,241 @@
-const container = document.querySelector(".container"),
-mainVideo = container.querySelector("video"),
-videoTimeline = container.querySelector(".video-timeline"),
-progressBar = container.querySelector(".progress-bar"),
-volumeBtn = container.querySelector(".volume i"),
-volumeSlider = container.querySelector(".left input");
-currentVidTime = container.querySelector(".current-time"),
-videoDuration = container.querySelector(".video-duration"),
-skipBackward = container.querySelector(".skip-backward i"),
-skipForward = container.querySelector(".skip-forward i"),
-playPauseBtn = container.querySelector(".play-pause i"),
-speedBtn = container.querySelector(".playback-speed span"),
-speedOptions = container.querySelector(".speed-options"),
-pipBtn = container.querySelector(".pic-in-pic span"),
-fullScreenBtn = container.querySelector(".fullscreen i");
-let timer;
+const playPauseBtn = document.querySelector(".play-pause-btn")
+const theaterBtn = document.querySelector(".theater-btn")
+const fullScreenBtn = document.querySelector(".full-screen-btn")
+const miniPlayerBtn = document.querySelector(".mini-player-btn")
+const muteBtn = document.querySelector(".mute-btn")
+const captionsBtn = document.querySelector(".captions-btn")
+const speedBtn = document.querySelector(".speed-btn")
+const currentTimeElem = document.querySelector(".current-time")
+const totalTimeElem = document.querySelector(".total-time")
+const previewImg = document.querySelector(".preview-img")
+const thumbnailImg = document.querySelector(".thumbnail-img")
+const volumeSlider = document.querySelector(".volume-slider")
+const videoContainer = document.querySelector(".video-container")
+const timelineContainer = document.querySelector(".timeline-container")
+const video = document.querySelector("video")
 
-const hideControls = () => {
-    if(mainVideo.paused) return;
-    timer = setTimeout(() => {
-        container.classList.remove("show-controls");
-    }, 3000);
+// New skip buttons (10 sec forward/backward)
+const skipForwardBtn = document.querySelector(".skip-forward-btn")
+const skipBackwardBtn = document.querySelector(".skip-backward-btn")
+
+document.addEventListener("keydown", e => {
+  const tagName = document.activeElement.tagName.toLowerCase()
+
+  if (tagName === "input") return
+
+  switch (e.key.toLowerCase()) {
+    case " ":
+      if (tagName === "button") return
+    case "k":
+      togglePlay()
+      break
+    case "f":
+      toggleFullScreenMode()
+      break
+    case "t":
+      toggleTheaterMode()
+      break
+    case "i":
+      toggleMiniPlayerMode()
+      break
+    case "m":
+      toggleMute()
+      break
+    case "arrowleft":
+    case "j":
+      skip(-10) // Changed to 10 sec skip
+      break
+    case "arrowright":
+    case "l":
+      skip(10) // Changed to 10 sec skip
+      break
+    case "c":
+      toggleCaptions()
+      break
+  }
+})
+
+// Timeline
+timelineContainer.addEventListener("mousemove", handleTimelineUpdate)
+timelineContainer.addEventListener("mousedown", toggleScrubbing)
+document.addEventListener("mouseup", e => {
+  if (isScrubbing) toggleScrubbing(e)
+})
+document.addEventListener("mousemove", e => {
+  if (isScrubbing) handleTimelineUpdate(e)
+})
+
+let isScrubbing = false
+let wasPaused
+function toggleScrubbing(e) {
+  const rect = timelineContainer.getBoundingClientRect()
+  const percent = Math.min(Math.max(0, e.x - rect.x), rect.width) / rect.width
+  isScrubbing = (e.buttons & 1) === 1
+  videoContainer.classList.toggle("scrubbing", isScrubbing)
+  if (isScrubbing) {
+    wasPaused = video.paused
+    video.pause()
+  } else {
+    video.currentTime = percent * video.duration
+    if (!wasPaused) video.play()
+  }
+
+  handleTimelineUpdate(e)
 }
-hideControls();
 
-container.addEventListener("mousemove", () => {
-    container.classList.add("show-controls");
-    clearTimeout(timer);
-    hideControls();   
-});
+function handleTimelineUpdate(e) {
+  const rect = timelineContainer.getBoundingClientRect()
+  const percent = Math.min(Math.max(0, e.x - rect.x), rect.width) / rect.width
+  const previewImgNumber = Math.max(
+    1,
+    Math.floor((percent * video.duration) / 10)
+  )
+  const previewImgSrc = `assets/previewImgs/preview${previewImgNumber}.jpg`
+  previewImg.src = previewImgSrc
+  timelineContainer.style.setProperty("--preview-position", percent)
 
-const formatTime = time => {
-    let seconds = Math.floor(time % 60),
-    minutes = Math.floor(time / 60) % 60,
-    hours = Math.floor(time / 3600);
-
-    seconds = seconds < 10 ? `0${seconds}` : seconds;
-    minutes = minutes < 10 ? `0${minutes}` : minutes;
-    hours = hours < 10 ? `0${hours}` : hours;
-
-    if(hours == 0) {
-        return `${minutes}:${seconds}`
-    }
-    return `${hours}:${minutes}:${seconds}`;
+  if (isScrubbing) {
+    e.preventDefault()
+    thumbnailImg.src = previewImgSrc
+    timelineContainer.style.setProperty("--progress-position", percent)
+  }
 }
 
-videoTimeline.addEventListener("mousemove", e => {
-    let timelineWidth = videoTimeline.clientWidth;
-    let offsetX = e.offsetX;
-    let percent = Math.floor((offsetX / timelineWidth) * mainVideo.duration);
-    const progressTime = videoTimeline.querySelector("span");
-    offsetX = offsetX < 20 ? 20 : (offsetX > timelineWidth - 20) ? timelineWidth - 20 : offsetX;
-    progressTime.style.left = `${offsetX}px`;
-    progressTime.innerText = formatTime(percent);
-});
+// Playback Speed
+speedBtn.addEventListener("click", changePlaybackSpeed)
 
-videoTimeline.addEventListener("click", e => {
-    let timelineWidth = videoTimeline.clientWidth;
-    mainVideo.currentTime = (e.offsetX / timelineWidth) * mainVideo.duration;
-});
-
-mainVideo.addEventListener("timeupdate", e => {
-    let {currentTime, duration} = e.target;
-    let percent = (currentTime / duration) * 100;
-    progressBar.style.width = `${percent}%`;
-    currentVidTime.innerText = formatTime(currentTime);
-});
-
-mainVideo.addEventListener("loadeddata", () => {
-    videoDuration.innerText = formatTime(mainVideo.duration);
-});
-
-const draggableProgressBar = e => {
-    let timelineWidth = videoTimeline.clientWidth;
-    progressBar.style.width = `${e.offsetX}px`;
-    mainVideo.currentTime = (e.offsetX / timelineWidth) * mainVideo.duration;
-    currentVidTime.innerText = formatTime(mainVideo.currentTime);
+function changePlaybackSpeed() {
+  let newPlaybackRate = video.playbackRate + 0.25
+  if (newPlaybackRate > 2) newPlaybackRate = 0.25
+  video.playbackRate = newPlaybackRate
+  speedBtn.textContent = `${newPlaybackRate}x`
 }
 
-volumeBtn.addEventListener("click", () => {
-    if(!volumeBtn.classList.contains("fa-volume-high")) {
-        mainVideo.volume = 0.5;
-        volumeBtn.classList.replace("fa-volume-xmark", "fa-volume-high");
-    } else {
-        mainVideo.volume = 0.0;
-        volumeBtn.classList.replace("fa-volume-high", "fa-volume-xmark");
-    }
-    volumeSlider.value = mainVideo.volume;
-});
+// Captions
+const captions = video.textTracks[0]
+captions.mode = "hidden"
 
+captionsBtn.addEventListener("click", toggleCaptions)
+
+function toggleCaptions() {
+  const isHidden = captions.mode === "hidden"
+  captions.mode = isHidden ? "showing" : "hidden"
+  videoContainer.classList.toggle("captions", isHidden)
+}
+
+// Duration
+video.addEventListener("loadeddata", () => {
+  totalTimeElem.textContent = formatDuration(video.duration)
+  video.play() // Auto-play when loaded
+})
+
+video.addEventListener("timeupdate", () => {
+  currentTimeElem.textContent = formatDuration(video.currentTime)
+  const percent = video.currentTime / video.duration
+  timelineContainer.style.setProperty("--progress-position", percent)
+})
+
+const leadingZeroFormatter = new Intl.NumberFormat(undefined, {
+  minimumIntegerDigits: 2,
+})
+function formatDuration(time) {
+  const seconds = Math.floor(time % 60)
+  const minutes = Math.floor(time / 60) % 60
+  const hours = Math.floor(time / 3600)
+  if (hours === 0) {
+    return `${minutes}:${leadingZeroFormatter.format(seconds)}`
+  } else {
+    return `${hours}:${leadingZeroFormatter.format(
+      minutes
+    )}:${leadingZeroFormatter.format(seconds)}`
+  }
+}
+
+function skip(duration) {
+  video.currentTime += duration
+}
+
+// Volume
+muteBtn.addEventListener("click", toggleMute)
 volumeSlider.addEventListener("input", e => {
-    mainVideo.volume = e.target.value;
-    if(e.target.value == 0) {
-        return volumeBtn.classList.replace("fa-volume-high", "fa-volume-xmark");
-    }
-    volumeBtn.classList.replace("fa-volume-xmark", "fa-volume-high");
-});
+  video.volume = e.target.value
+  video.muted = e.target.value === 0
+})
 
-speedOptions.querySelectorAll("li").forEach(option => {
-    option.addEventListener("click", () => {
-        mainVideo.playbackRate = option.dataset.speed;
-        speedOptions.querySelector(".active").classList.remove("active");
-        option.classList.add("active");
-    });
-});
+function toggleMute() {
+  video.muted = !video.muted
+}
 
-document.addEventListener("click", e => {
-    if(e.target.tagName !== "SPAN" || e.target.className !== "material-symbols-rounded") {
-        speedOptions.classList.remove("show");
-    }
-});
+video.addEventListener("volumechange", () => {
+  volumeSlider.value = video.volume
+  let volumeLevel
+  if (video.muted || video.volume === 0) {
+    volumeSlider.value = 0
+    volumeLevel = "muted"
+  } else if (video.volume >= 0.5) {
+    volumeLevel = "high"
+  } else {
+    volumeLevel = "low"
+  }
 
-fullScreenBtn.addEventListener("click", () => {
-    container.classList.toggle("fullscreen");
-    if(document.fullscreenElement) {
-        fullScreenBtn.classList.replace("fa-compress", "fa-expand");
-        return document.exitFullscreen();
-    }
-    fullScreenBtn.classList.replace("fa-expand", "fa-compress");
-    container.requestFullscreen();
-});
+  videoContainer.dataset.volumeLevel = volumeLevel
+})
 
-speedBtn.addEventListener("click", () => speedOptions.classList.toggle("show"));
-pipBtn.addEventListener("click", () => mainVideo.requestPictureInPicture());
-skipBackward.addEventListener("click", () => mainVideo.currentTime -= 5);
-skipForward.addEventListener("click", () => mainVideo.currentTime += 5);
-mainVideo.addEventListener("play", () => playPauseBtn.classList.replace("fa-play", "fa-pause"));
-mainVideo.addEventListener("pause", () => playPauseBtn.classList.replace("fa-pause", "fa-play"));
-playPauseBtn.addEventListener("click", () => mainVideo.paused ? mainVideo.play() : mainVideo.pause());
-videoTimeline.addEventListener("mousedown", () => videoTimeline.addEventListener("mousemove", draggableProgressBar));
-document.addEventListener("mouseup", () => videoTimeline.removeEventListener("mousemove", draggableProgressBar));
+// View Modes
+theaterBtn.addEventListener("click", toggleTheaterMode)
+fullScreenBtn.addEventListener("click", toggleFullScreenMode)
+miniPlayerBtn.addEventListener("click", toggleMiniPlayerMode)
+
+function toggleTheaterMode() {
+  videoContainer.classList.toggle("theater")
+}
+
+function toggleFullScreenMode() {
+  if (document.fullscreenElement == null) {
+    videoContainer.requestFullscreen()
+    video.style.width = "100%"  // Adjust for landscape fullscreen
+  } else {
+    document.exitFullscreen()
+  }
+}
+
+function toggleMiniPlayerMode() {
+  if (videoContainer.classList.contains("mini-player")) {
+    document.exitPictureInPicture()
+  } else {
+    video.requestPictureInPicture()
+  }
+}
+
+document.addEventListener("fullscreenchange", () => {
+  videoContainer.classList.toggle("full-screen", document.fullscreenElement)
+})
+
+video.addEventListener("enterpictureinpicture", () => {
+  videoContainer.classList.add("mini-player")
+})
+
+video.addEventListener("leavepictureinpicture", () => {
+  videoContainer.classList.remove("mini-player")
+})
+
+// Play/Pause
+playPauseBtn.addEventListener("click", togglePlay)
+video.addEventListener("click", togglePlay)
+
+function togglePlay() {
+  video.paused ? video.play() : video.pause()
+}
+
+video.addEventListener("play", () => {
+  videoContainer.classList.remove("paused")
+})
+
+video.addEventListener("pause", () => {
+  videoContainer.classList.add("paused")
+})
+
+// New Skip Functionality for 10 Seconds
+skipForwardBtn.addEventListener("click", () => skip(10))
+skipBackwardBtn.addEventListener("click", () => skip(-10))
+
